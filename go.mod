@@ -3,7 +3,6 @@ module github.com/wtran29/go-blockchain
 go 1.19
 
 require (
-	github.com/ardanlabs/blockchain v0.0.0-20221209193711-17bc13e28e06
 	github.com/ardanlabs/conf/v3 v3.1.3
 	github.com/dimfeld/httptreemux/v5 v5.5.0
 	github.com/ethereum/go-ethereum v1.10.26
