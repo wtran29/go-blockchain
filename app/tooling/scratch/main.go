@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -34,28 +36,43 @@ func sign() error {
 		Name: "Bill",
 	}
 
-	data, err := json.Marshal(v)
+	data, err := stamp(v)
 	if err != nil {
-		return err
+		return fmt.Errorf("stamp: %w", err)
 	}
-
-	// Hash the stamp and txHash together in a final 32 byte array
-	// that represents the data.
-	txHash := crypto.Keccak256(data)
-
 	// Sign the hash with the private key to produce a signature
-	sig, err := crypto.Sign(txHash, privateKey)
+	sig, err := crypto.Sign(data, privateKey)
 	if err != nil {
 		return fmt.Errorf("sign: %w", err)
 	}
 
 	fmt.Println("Signature:", sig)
+	fmt.Printf("SIG: 0x%s\n:", hex.EncodeToString(sig))
 
 	// ===================================================================
+	// NODE
 
-	sigPublicKey, err := crypto.Ecrecover(txHash, sig)
+	// Passed with sig
+	v2 := struct {
+		Name string
+	}{
+		Name: "Bill",
+	}
+
+	data2, err := stamp(v2)
+	if err != nil {
+		return fmt.Errorf("stamp: %w", err)
+	}
+
+	sigPublicKey, err := crypto.Ecrecover(data2, sig)
 	if err != nil {
 		return err
+	}
+	fmt.Println("PK_length:", len(sigPublicKey))
+
+	rs := sig[:crypto.RecoveryIDOffset]
+	if !crypto.VerifySignature(sig, data2, rs) {
+		return errors.New("invalid signature")
 	}
 
 	// Capture the public key associated with this data and signature.
@@ -67,4 +84,23 @@ func sign() error {
 	fmt.Println(address)
 
 	return nil
+}
+
+func stamp(value any) ([]byte, error) {
+
+	// Marshal the data.
+	v, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+
+	// This stamp is used so signatures we produce when signing data
+	// are always unique to the Go blockchain.
+	stamp := []byte(fmt.Sprintf("\x19Signed Message:\n%d", len(v)))
+
+	// Hash the stamp and txHash together in a final 32 byte array
+	// that represents the data.
+	data := crypto.Keccak256(stamp, v)
+
+	return data, nil
 }
