@@ -105,3 +105,8 @@ func New(cfg Config) (*State, error) {
 
 	return &state, nil
 }
+
+// Mempool returns a copy of the mempool.
+func (s *State) Mempool() []database.BlockTx {
+	return s.mempool.PickBest()
+}

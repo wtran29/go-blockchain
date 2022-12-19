@@ -1,7 +1,10 @@
 package database
 
 import (
+	"crypto/ecdsa"
 	"errors"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Account represents information stored in the database for an individual account.
@@ -35,6 +38,11 @@ func ToAccountID(hex string) (AccountID, error) {
 	}
 
 	return a, nil
+}
+
+// PublicKeyToAccountID converts the public key to an account value.
+func PublicKeyToAccountID(pk ecdsa.PublicKey) AccountID {
+	return AccountID(crypto.PubkeyToAddress(pk).String())
 }
 
 // IsAccountID verifies whether the underlying data represents a valid
