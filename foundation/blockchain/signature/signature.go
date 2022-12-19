@@ -3,6 +3,7 @@ package signature
 import (
 	"crypto/ecdsa"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,7 +84,7 @@ func stamp(value any) ([]byte, error) {
 
 	// This stamp is used so signatures we produce when signing data
 	// are always unique to the Go blockchain.
-	stamp := []byte(fmt.Sprintf("\x19Go Signed Message:\n%d", len(v)))
+	stamp := []byte(fmt.Sprintf("\x19Signed Message:\n%d", len(v)))
 
 	// Hash the stamp and txHash together in a final 32 byte array
 	// that represents the data.
@@ -121,6 +122,11 @@ func VerifySignature(v, r, s *big.Int) error {
 // FromAddress extracts the address for the account that signed the data.
 func FromAddress(value any, v, r, s *big.Int) (string, error) {
 
+	// NOTE: If the same exact data for the given signature is not provided,
+	// we will get the wrong address for the transaction. There is no
+	// way to check this on the node since we don't have a copy of the public
+	// key used. The public key is being extracted from the data and signature.
+
 	// Prepare the data for public key extraction.
 	data, err := stamp(value)
 	if err != nil {
@@ -145,8 +151,23 @@ func SignatureString(v, r, s *big.Int) string {
 	return hexutil.Encode(ToSignatureBytesWithRecoveryID(v, r, s))
 }
 
+// ToVRSFromHexSignature converts a hex representation of the signature into
+// its R, S and V parts.
+func ToVRSFromHexSignature(sigStr string) (v, r, s *big.Int, err error) {
+	sig, err := hex.DecodeString(sigStr[2:])
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	r = new(big.Int).SetBytes(sig[:32])
+	s = new(big.Int).SetBytes(sig[32:64])
+	v = new(big.Int).SetBytes([]byte{sig[64]})
+
+	return v, r, s, nil
+}
+
 // ToSignatureBytes converts the r, s, v values into a slice of bytes
-// with the removal of the ardanID.
+// with the removal of the recovery ID.
 func ToSignatureBytes(v, r, s *big.Int) []byte {
 	sig := make([]byte, crypto.SignatureLength)
 
