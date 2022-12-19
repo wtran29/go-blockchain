@@ -8,14 +8,135 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/merkle"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/signature"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/storage/disk"
 )
 
 func main() {
-	if err := sign(); err != nil {
+
+	err := readBlock()
+	if err != nil {
 		log.Fatalln(err)
 	}
+	// readBlock()
+}
+
+func readBlock() error {
+
+	d, err := disk.New("block/miner1")
+	if err != nil {
+		return err
+	}
+
+	blockData, err := d.GetBlock(1)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(blockData)
+
+	block, err := database.ToBlock(blockData)
+	if err != nil {
+		return err
+	}
+
+	if blockData.Header.TransRoot != block.MerkleTree.RootHex() {
+		return errors.New("merkle tree wrong")
+	}
+
+	fmt.Println("merkle tree matches")
+
+	return nil
+}
+
+func writeBlock() error {
+	txs := []database.Tx{
+		{
+			ChainID: 1,
+			Nonce:   1,
+			FromID:  "0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4",
+			ToID:    "0xF01813E4B85e178A83e29B8E7bF26BD830a25f32",
+			Value:   100,
+			Tip:     50,
+		},
+		{
+			ChainID: 1,
+			Nonce:   2,
+			FromID:  "0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4",
+			ToID:    "0xF01813E4B85e178A83e29B8E7bF26BD830a25f32",
+			Value:   100,
+			Tip:     50,
+		},
+	}
+	blockTxs := make([]database.BlockTx, len(txs))
+	for i, tx := range txs {
+		blockTx, err := signToBlockTx(tx, 15)
+		if err != nil {
+			return err
+		}
+
+		blockTxs[i] = blockTx
+	}
+
+	// Construct a merkle tree from the transaction for this block. The root
+	// of this tree will be part of the block to be mined.
+
+	tree, err := merkle.NewTree(blockTxs)
+	if err != nil {
+		return err
+	}
+
+	beneficiaryID, err := database.ToAccountID("0xF01813E4B85e178A83e29B8E7bF26BD830a25f32")
+	if err != nil {
+		return err
+	}
+	// Construct the block to be mined.
+	block := database.Block{
+		Header: database.BlockHeader{
+			Number:        1,
+			PrevBlockHash: signature.ZeroHash,
+			TimeStamp:     uint64(time.Now().UTC().Unix()),
+			BeneficiaryID: beneficiaryID,
+			Difficulty:    6,
+			MiningReward:  700,
+			StateRoot:     "undefined for now",
+			TransRoot:     tree.RootHex(), //
+			Nonce:         0,              // Will be identified by the POW algorithm.
+		},
+		MerkleTree: tree,
+	}
+
+	bd := database.NewBlockData(block)
+
+	d, err := disk.New("block/miner1")
+	if err != nil {
+		return err
+	}
+
+	if err := d.Write(bd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func signToBlockTx(tx database.Tx, gas uint64) (database.BlockTx, error) {
+	pk, err := crypto.HexToECDSA("fae85851bdf5c9f49923722ce38f3c1defcfd3619ef5453230a58ad805499959")
+	if err != nil {
+		return database.BlockTx{}, err
+	}
+
+	signedTx, err := tx.Sign(pk)
+	if err != nil {
+		return database.BlockTx{}, err
+	}
+
+	return database.NewBlockTx(signedTx, gas, 1), nil
 }
 
 func sign() error {
@@ -78,7 +199,7 @@ func sign() error {
 
 	// Check the public key extracted from the data and signature.
 	rs := sig[:crypto.RecoveryIDOffset]
-	if !crypto.VerifySignature(sig, data2, rs) {
+	if !crypto.VerifySignature(sigPublicKey, data2, rs) {
 		return errors.New("invalid signature")
 	}
 

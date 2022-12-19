@@ -11,6 +11,14 @@ type Account struct {
 	Balance   uint64
 }
 
+// newAccount constructs a new account value for use.
+func newAccount(accountID AccountID, balance uint64) Account {
+	return Account{
+		AccountID: accountID,
+		Balance:   balance,
+	}
+}
+
 // =============================================================================
 
 // AccountID represents an account id that is used to sign transactions and is

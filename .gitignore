@@ -1,1 +1,4 @@
 .env
+
+block/miner1/*
+miner2/*
