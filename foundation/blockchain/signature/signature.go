@@ -2,6 +2,7 @@ package signature
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,20 @@ import (
 const recoveryID = 27
 
 // ============================================================================================================
+
+// ZeroHash represents a hash code of zeros. This is in case there is an error hashing.
+const ZeroHash string = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+// Hash returns a unique string for the value.
+func Hash(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return ZeroHash
+	}
+
+	hash := sha256.Sum256(data)
+	return hexutil.Encode(hash[:])
+}
 
 // Sign uses the specified private key to sign the data.
 // The signature produced by ECDSA consists of three values: r, s, and v.
@@ -57,7 +72,7 @@ func Sign(value any, privateKey *ecdsa.PrivateKey) (v, r, s *big.Int, err error)
 }
 
 // stamp returns a hash of 32 bytes that represents this data with
-// the Ardan stamp embedded into the final hash.
+// the signature stamp embedded into the final hash.
 func stamp(value any) ([]byte, error) {
 
 	// Marshal the data.
