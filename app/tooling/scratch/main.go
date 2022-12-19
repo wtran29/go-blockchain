@@ -70,6 +70,13 @@ func sign() error {
 	}
 	fmt.Println("PK_length:", len(sigPublicKey))
 
+	// Extract the public key from the data and the signature.
+	// publicKey, err := crypto.SigToPub(data2, sig)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// Check the public key extracted from the data and signature.
 	rs := sig[:crypto.RecoveryIDOffset]
 	if !crypto.VerifySignature(sig, data2, rs) {
 		return errors.New("invalid signature")
