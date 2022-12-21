@@ -16,8 +16,8 @@ const (
 
 // Map of different select strategies with functions.
 var strategies = map[string]Func{
-	// StrategyTip:         tipSelect,
-	// StrategyTipAdvanced: advancedTipSelect,
+	StrategyTip:         tipSelect,
+	StrategyTipAdvanced: advancedTipSelect,
 }
 
 // Func defines a function that takes a mempool of transactions grouped by

@@ -10,14 +10,14 @@ import (
 	"sync"
 
 	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
-	// "github.com/wtran29/go-blockchain/foundation/blockchain/mempool/selector"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/mempool/selector"
 )
 
 // Mempool represents a cache of transactions organized by account:nonce.
 type Mempool struct {
-	mu   sync.RWMutex
-	pool map[string]database.BlockTx
-	// selectFn selector.Func
+	mu       sync.RWMutex
+	pool     map[string]database.BlockTx
+	selectFn selector.Func
 }
 
 // New constructs a new mempool using the default sort strategy.
@@ -31,14 +31,14 @@ func New() (*Mempool, error) {
 
 // NewWithStrategy constructs a new mempool with specified sort strategy.
 func NewWithStrategy(strategy string) (*Mempool, error) {
-	// selectFn, err := selector.Retrieve(strategy)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	selectFn, err := selector.Retrieve(strategy)
+	if err != nil {
+		return nil, err
+	}
 
 	mp := Mempool{
-		pool: make(map[string]database.BlockTx),
-		// selectFn: selectFn,
+		pool:     make(map[string]database.BlockTx),
+		selectFn: selectFn,
 	}
 
 	return &mp, nil
@@ -116,7 +116,7 @@ func (mp *Mempool) PickBest(howMany ...uint16) []database.BlockTx {
 
 	// CORE NOTE: Most blockchains do set a max block size limit and this size
 	// will determined which transactions are selected. When picking the best
-	// transactions for the next block, the Ardan blockchain is currently not
+	// transactions for the next block, this blockchain is currently not
 	// focused on block size but a max number of transactions.
 	//
 	// When the selection algorithm does need to consider sizing, picking the
@@ -143,8 +143,20 @@ func (mp *Mempool) PickBest(howMany ...uint16) []database.BlockTx {
 
 	// The selection algorithms is expecting this slice of transactions
 	// organized by account.
-	// return mp.selectFn(m, number)
-	return nil
+	return mp.selectFn(m, number)
+
+	// Alternative Implementation without slicing
+	// mp.mu.RLock()
+	// defer mp.mu.RUnlock()
+
+	// var txs []database.BlockTx
+	// for _, tx := range mp.pool {
+	// 	txs = append(txs, tx)
+	// }
+
+	// sort.Sort(byNonce(txs))
+
+	// return txs
 }
 
 // =============================================================================
@@ -157,4 +169,25 @@ func mapKey(tx database.BlockTx) (string, error) {
 // accountFromMapKey extracts the account information from the mapkey.
 func accountFromMapKey(key string) database.AccountID {
 	return database.AccountID(strings.Split(key, ":")[0])
+}
+
+// =============================================================================
+
+// byNonce provides sorting support by the transaction id value.
+type byNonce []database.BlockTx
+
+// Len returns the number of transactions in the list.
+func (bn byNonce) Len() int {
+	return len(bn)
+}
+
+// Less helps to sort the list by nonce in ascending order to keep the
+// transactions in the right order of processing.
+func (bn byNonce) Less(i, j int) bool {
+	return bn[i].Nonce < bn[j].Nonce
+}
+
+// Swap moves transactions in the order of the nonce value.
+func (bn byNonce) Swap(i, j int) {
+	bn[i], bn[j] = bn[j], bn[i]
 }
