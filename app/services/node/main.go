@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,7 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/wtran29/go-blockchain/app/services/node/handlers"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/genesis"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/peer"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/state"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/storage/disk"
+	"github.com/wtran29/go-blockchain/foundation/blockchain/worker"
+	"github.com/wtran29/go-blockchain/foundation/events"
 	"github.com/wtran29/go-blockchain/foundation/logger"
 	"github.com/wtran29/go-blockchain/foundation/nameservice"
 	"go.uber.org/zap"
@@ -61,11 +67,11 @@ func run(log *zap.SugaredLogger) error {
 			PrivateHost     string        `conf:"default:0.0.0.0:9080"`
 		}
 		State struct {
-			Beneficiary string `conf:"default:miner1"`
-			DBPath      string `conf:"default:block/miner1/"`
-			// SelectStrategy string   `conf:"default:Tip"`
-			// OriginPeers    []string `conf:"default:0.0.0.0:9080"` //
-			// Consensus      string   `conf:"default:POW"`          // Change to POA to run Proof of Authority
+			Beneficiary    string   `conf:"default:miner1"`
+			DBPath         string   `conf:"default:block/miner1/"`
+			SelectStrategy string   `conf:"default:Tip"`
+			OriginPeers    []string `conf:"default:0.0.0.0:9080"` //
+			Consensus      string   `conf:"default:POW"`          // Change to POA to run Proof of Authority
 		}
 		NameService struct {
 			Folder string `conf:"default:block/accounts/"`
@@ -135,60 +141,80 @@ func run(log *zap.SugaredLogger) error {
 		return fmt.Errorf("unable to load private key for node: %w", err)
 	}
 
+	// A peer set is a collection of known nodes in the network so transactions
+	// and blocks can be shared.
+	peerSet := peer.NewPeerSet()
+	for _, host := range cfg.State.OriginPeers {
+		peerSet.Add(peer.New(host))
+	}
+	peerSet.Add(peer.New(cfg.Web.PrivateHost))
+
 	// The blockchain packages accept a function of this signature to allow the
 	// application to log. For now, these raw messages are sent to any websocket
 	// client that is connected into the system through the events package.
-	// evts := events.New()
+	evts := events.New()
 	ev := func(v string, args ...any) {
-		// const websocketPrefix = "viewer:"
+		const websocketPrefix = "viewer:"
 
 		s := fmt.Sprintf(v, args...)
 		log.Infow(s, "traceid", "00000000-0000-0000-0000-000000000000")
-		// if strings.HasPrefix(s, websocketPrefix) {
-		// 	evts.Send(s)
-		// }
+		if strings.HasPrefix(s, websocketPrefix) {
+			evts.Send(s)
+		}
+	}
+
+	// Construct the use of disk storage.
+	storage, err := disk.New(cfg.State.DBPath)
+	if err != nil {
+		return err
+	}
+
+	// Load the genesis file for blockchain settings and origin balances.
+	genesis, err := genesis.Load()
+	if err != nil {
+		return err
 	}
 
 	// The state value represents the blockchain node and manages the blockchain
 	// database and provides an API for application support.
 	state, err := state.New(state.Config{
-		BeneficiaryID: database.PublicKeyToAccountID(privateKey.PublicKey),
-		Host:          cfg.Web.PrivateHost,
-		// Storage:        storage,
-		// Genesis:        genesis,
-		// SelectStrategy: cfg.State.SelectStrategy,
-		// KnownPeers:     peerSet,
-		// Consensus:      cfg.State.Consensus,
-		EvHandler: ev,
+		BeneficiaryID:  database.PublicKeyToAccountID(privateKey.PublicKey),
+		Host:           cfg.Web.PrivateHost,
+		Storage:        storage,
+		Genesis:        genesis,
+		SelectStrategy: cfg.State.SelectStrategy,
+		KnownPeers:     peerSet,
+		Consensus:      cfg.State.Consensus,
+		EvHandler:      ev,
 	})
 	if err != nil {
 		return err
 	}
-	// defer state.Shutdown()
+	defer state.Shutdown()
 
-	// // The worker package implements the different workflows such as mining,
-	// // transaction peer sharing, and peer updates. The worker will register
-	// // itself with the state.
-	// worker.Run(state, ev)
+	// The worker package implements the different workflows such as mining,
+	// transaction peer sharing, and peer updates. The worker will register
+	// itself with the state.
+	worker.Run(state, ev)
 
 	// =========================================================================
-	// // Start Debug Service
+	// Start Debug Service
 
-	// log.Infow("startup", "status", "debug v1 router started", "host", cfg.Web.DebugHost)
+	log.Infow("startup", "status", "debug v1 router started", "host", cfg.Web.DebugHost)
 
-	// // The Debug function returns a mux to listen and serve on for all the debug
-	// // related endpoints. This includes the standard library endpoints.
+	// The Debug function returns a mux to listen and serve on for all the debug
+	// related endpoints. This includes the standard library endpoints.
 
-	// // Construct the mux for the debug calls.
-	// debugMux := handlers.DebugMux(build, log)
+	// Construct the mux for the debug calls.
+	debugMux := handlers.DebugMux(build, log)
 
-	// // Start the service listening for debug requests.
-	// // Not concerned with shutting this down with load shedding.
-	// go func() {
-	// 	if err := http.ListenAndServe(cfg.Web.DebugHost, debugMux); err != nil {
-	// 		log.Errorw("shutdown", "status", "debug v1 router closed", "host", cfg.Web.DebugHost, "ERROR", err)
-	// 	}
-	// }()
+	// Start the service listening for debug requests.
+	// Not concerned with shutting this down with load shedding.
+	go func() {
+		if err := http.ListenAndServe(cfg.Web.DebugHost, debugMux); err != nil {
+			log.Errorw("shutdown", "status", "debug v1 router closed", "host", cfg.Web.DebugHost, "ERROR", err)
+		}
+	}()
 
 	// =========================================================================
 	// Service Start/Stop Support
@@ -213,7 +239,7 @@ func run(log *zap.SugaredLogger) error {
 		Log:      log,
 		State:    state,
 		NS:       ns,
-		// Evts:     evts,
+		Evts:     evts,
 	})
 
 	// Construct a server to service the requests against the mux.
@@ -241,6 +267,8 @@ func run(log *zap.SugaredLogger) error {
 	privateMux := handlers.PrivateMux(handlers.MuxConfig{
 		Shutdown: shutdown,
 		Log:      log,
+		State:    state,
+		NS:       ns,
 	})
 
 	// Construct a server to service the requests against the mux.

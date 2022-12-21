@@ -10,6 +10,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.0
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/google/uuid v1.3.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/spf13/cobra v1.6.1
 	go.uber.org/zap v1.24.0
 )

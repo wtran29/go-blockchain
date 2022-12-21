@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/wtran29/go-blockchain/app/services/node/handlers/v1/private"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/merkle"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/signature"
@@ -27,6 +28,12 @@ func main() {
 }
 
 func readBlock() error {
+	privateKey, err := private.GeneratePrivateKey()
+	if err != nil {
+		return err
+
+	}
+	fmt.Println("Private key:", privateKey)
 
 	d, err := disk.New("block/miner1")
 	if err != nil {
@@ -100,7 +107,7 @@ func writeBlock() error {
 		Header: database.BlockHeader{
 			Number:        1,
 			PrevBlockHash: signature.ZeroHash,
-			TimeStamp:     uint64(time.Now().UTC().Unix()),
+			TimeStamp:     uint64(time.Now().UTC().UnixMilli()),
 			BeneficiaryID: beneficiaryID,
 			Difficulty:    6,
 			MiningReward:  700,

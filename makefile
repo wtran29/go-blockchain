@@ -41,7 +41,7 @@ up:
 	go run app/services/node/main.go -race | go run app/tooling/logfmt/main.go
 
 up2:
-	go run app/services/node/main.go -race --web-debug-host 0.0.0.0:7281 --web-public-host 0.0.0.0:8280 --web-private-host 0.0.0.0:9280 --state-beneficiary=miner2 --state-db-path zblock/miner2/ | go run app/tooling/logfmt/main.go
+	go run app/services/node/main.go -race --web-debug-host 0.0.0.0:7281 --web-public-host 0.0.0.0:8280 --web-private-host 0.0.0.0:9280 --state-beneficiary=miner2 --state-db-path block/miner2/ | go run app/tooling/logfmt/main.go
 
 # Use Windows CMD - run without using make down
 down:
@@ -61,6 +61,21 @@ load:
 	go run app/tooling/cli/main.go send -a kennedy -n 3 -f 0xF01813E4B85e178A83e29B8E7bF26BD830a25f32 -t 0xa988b1866EaBF72B4c53b592c97aAD8e4b9bDCC0 -v 200
 	go run app/tooling/cli/main.go send -a pavel -n 3 -f 0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4 -t 0x6Fe6CF3c8fF57c58d24BfC869668F48BCbDb3BD9 -v 250
 
+load2:
+	go run app/wallet/cli/main.go send -a kennedy -n 4 -f 0xF01813E4B85e178A83e29B8E7bF26BD830a25f32 -t 0xbEE6ACE826eC3DE1B6349888B9151B92522F7F76 -v 100
+	go run app/wallet/cli/main.go send -a pavel -n 4 -f 0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4 -t 0xbEE6ACE826eC3DE1B6349888B9151B92522F7F76 -v 75
+
+load3:
+	go run app/wallet/cli/main.go send -a kennedy -n 5 -f 0xF01813E4B85e178A83e29B8E7bF26BD830a25f32 -t 0x6Fe6CF3c8fF57c58d24BfC869668F48BCbDb3BD9 -v 150
+	go run app/wallet/cli/main.go send -a pavel -n 5 -f 0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4 -t 0xa988b1866EaBF72B4c53b592c97aAD8e4b9bDCC0 -v 125
+	go run app/wallet/cli/main.go send -a kennedy -n 6 -f 0xF01813E4B85e178A83e29B8E7bF26BD830a25f32 -t 0xa988b1866EaBF72B4c53b592c97aAD8e4b9bDCC0 -v 200
+	go run app/wallet/cli/main.go send -a pavel -n 6 -f 0xdd6B972ffcc631a62CAE1BB9d80b7ff429c8ebA4 -t 0x6Fe6CF3c8fF57c58d24BfC869668F48BCbDb3BD9 -v 250
+
+mining:
+	curl -il -X GET http://localhost:8080/v1/start/mining
+
+accounts:
+	curl -il -X GET http://localhost:8080/v1/accounts/list
 
 # ==============================================================================
 # Modules support

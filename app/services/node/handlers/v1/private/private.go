@@ -171,7 +171,7 @@ func (h Handlers) Mempool(ctx context.Context, w http.ResponseWriter, r *http.Re
 
 // =============================================================================================
 // DO NOT USE IN PRODUCTION - for testing purposes only
-func generatePrivateKey() (string, error) {
+func GeneratePrivateKey() (string, error) {
 	randomBytes := make([]byte, 32)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
