@@ -24,5 +24,26 @@ func (s *State) UpsertWalletTransaction(signedTx database.SignedTx) error {
 		return err
 	}
 
+	s.Worker.SignalShareTx(tx)
+	s.Worker.SignalStartMining()
+
+	return nil
+}
+
+// UpsertNodeTransaction accepts a transaction from a node for inclusion.
+func (s *State) UpsertNodeTransaction(tx database.BlockTx) error {
+
+	// Check the signed transaction has a proper signature, the from matches the
+	// signature, and the from and to fields are properly formatted.
+	if err := tx.Validate(s.genesis.ChainID); err != nil {
+		return err
+	}
+
+	if err := s.mempool.Upsert(tx); err != nil {
+		return err
+	}
+
+	s.Worker.SignalStartMining()
+
 	return nil
 }
