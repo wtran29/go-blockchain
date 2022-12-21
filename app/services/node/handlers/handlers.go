@@ -12,6 +12,7 @@ import (
 	v1 "github.com/wtran29/go-blockchain/app/services/node/handlers/v1"
 	"github.com/wtran29/go-blockchain/business/web/v1/mid"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/state"
+	"github.com/wtran29/go-blockchain/foundation/events"
 	"github.com/wtran29/go-blockchain/foundation/nameservice"
 	"github.com/wtran29/go-blockchain/foundation/web"
 
@@ -24,7 +25,7 @@ type MuxConfig struct {
 	Log      *zap.SugaredLogger
 	State    *state.State
 	NS       *nameservice.NameService
-	// Evts     *events.Events
+	Evts     *events.Events
 }
 
 // PublicMux constructs a http.Handler with all application routes defined.
@@ -53,7 +54,7 @@ func PublicMux(cfg MuxConfig) http.Handler {
 		Log:   cfg.Log,
 		State: cfg.State,
 		NS:    cfg.NS,
-		// Evts:  cfg.Evts,
+		Evts:  cfg.Evts,
 	})
 
 	return app
@@ -82,7 +83,9 @@ func PrivateMux(cfg MuxConfig) http.Handler {
 
 	// Load the v1 routes.
 	v1.PrivateRoutes(app, v1.Config{
-		Log: cfg.Log,
+		Log:   cfg.Log,
+		State: cfg.State,
+		NS:    cfg.NS,
 	})
 
 	return app

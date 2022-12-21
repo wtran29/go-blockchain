@@ -5,10 +5,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/gorilla/websocket"
 	v1 "github.com/wtran29/go-blockchain/business/web/v1"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
 	"github.com/wtran29/go-blockchain/foundation/blockchain/state"
+	"github.com/wtran29/go-blockchain/foundation/events"
 	"github.com/wtran29/go-blockchain/foundation/nameservice"
 	"github.com/wtran29/go-blockchain/foundation/web"
 	"go.uber.org/zap"
@@ -19,55 +23,77 @@ type Handlers struct {
 	Log   *zap.SugaredLogger
 	State *state.State
 	NS    *nameservice.NameService
-	// WS    websocket.Upgrader
-	// Evts  *events.Events
+	WS    websocket.Upgrader
+	Evts  *events.Events
 }
 
-// // Events handles a web socket to provide events to a client.
-// func (h Handlers) Events(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-// 	v, err := web.GetValues(ctx)
-// 	if err != nil {
-// 		return web.NewShutdownError("web value missing from context")
-// 	}
+// StartMining will allow us to trigger a mining event.
+func (h Handlers) StartMining(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	block, err := h.State.MineNewBlock(ctx)
+	if err != nil {
+		return v1.NewRequestError(err, http.StatusBadRequest)
+	}
 
-// 	// Need this to handle CORS on the websocket.
-// 	h.WS.CheckOrigin = func(r *http.Request) bool { return true }
+	h.Log.Infow("===========================")
+	h.Log.Infow("MINED BLOCK", "block hash", block.Hash())
+	h.Log.Infow("MINED BLOCK", "block nonce", block.Header.Nonce)
+	h.Log.Infow("MINED BLOCK", "block header", block.Header)
+	h.Log.Infow("===========================")
 
-// 	// This upgrades the HTTP connection to a websocket connection.
-// 	c, err := h.WS.Upgrade(w, r, nil)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer c.Close()
+	status := struct {
+		Status string
+	}{
+		Status: "OK",
+	}
 
-// 	// This provides a channel for receiving events from the blockchain.
-// 	ch := h.Evts.Acquire(v.TraceID)
-// 	defer h.Evts.Release(v.TraceID)
+	return web.Respond(ctx, w, status, http.StatusOK)
+}
 
-// 	// Starting a ticker to send a ping message over the websocket.
-// 	ticker := time.NewTicker(time.Second)
+// Events handles a web socket to provide events to a client.
+func (h Handlers) Events(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	v, err := web.GetValues(ctx)
+	if err != nil {
+		return web.NewShutdownError("web value missing from context")
+	}
 
-// 	// Block waiting for events from the blockchain or ticker.
-// 	for {
-// 		select {
-// 		case msg, wd := <-ch:
+	// Need this to handle CORS on the websocket.
+	h.WS.CheckOrigin = func(r *http.Request) bool { return true }
 
-// 			// If the channel is closed, release the websocket.
-// 			if !wd {
-// 				return nil
-// 			}
+	// This upgrades the HTTP connection to a websocket connection.
+	c, err := h.WS.Upgrade(w, r, nil)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
 
-// 			if err := c.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
-// 				return err
-// 			}
+	// This provides a channel for receiving events from the blockchain.
+	ch := h.Evts.Acquire(v.TraceID)
+	defer h.Evts.Release(v.TraceID)
 
-// 		case <-ticker.C:
-// 			if err := c.WriteMessage(websocket.PingMessage, []byte("ping")); err != nil {
-// 				return nil
-// 			}
-// 		}
-// 	}
-// }
+	// Starting a ticker to send a ping message over the websocket.
+	ticker := time.NewTicker(time.Second)
+
+	// Block waiting for events from the blockchain or ticker.
+	for {
+		select {
+		case msg, wd := <-ch:
+
+			// If the channel is closed, release the websocket.
+			if !wd {
+				return nil
+			}
+
+			if err := c.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
+				return err
+			}
+
+		case <-ticker.C:
+			if err := c.WriteMessage(websocket.PingMessage, []byte("ping")); err != nil {
+				return nil
+			}
+		}
+	}
+}
 
 // SubmitWalletTransaction adds new transactions to the mempool.
 func (h Handlers) SubmitWalletTransaction(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
@@ -131,4 +157,119 @@ func (h Handlers) Mempool(ctx context.Context, w http.ResponseWriter, r *http.Re
 	}
 
 	return web.Respond(ctx, w, trans, http.StatusOK)
+}
+
+// Accounts returns the current balances for all users.
+func (h Handlers) Accounts(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	accountStr := web.Param(r, "account")
+
+	var accounts map[database.AccountID]database.Account
+	switch accountStr {
+	case "":
+		accounts = h.State.Accounts()
+
+	default:
+		accountID, err := database.ToAccountID(accountStr)
+		if err != nil {
+			return err
+		}
+		account, err := h.State.QueryAccount(accountID)
+		if err != nil {
+			return err
+		}
+		accounts = map[database.AccountID]database.Account{accountID: account}
+	}
+
+	resp := make([]act, 0, len(accounts))
+	for account, info := range accounts {
+		act := act{
+			Account: account,
+			Name:    h.NS.Lookup(account),
+			Balance: info.Balance,
+			Nonce:   info.Nonce,
+		}
+		resp = append(resp, act)
+	}
+
+	ai := actInfo{
+		LastestBlock: h.State.LatestBlock().Hash(),
+		Uncommitted:  len(h.State.Mempool()),
+		Accounts:     resp,
+	}
+
+	return web.Respond(ctx, w, ai, http.StatusOK)
+}
+
+// BlocksByAccount returns all the blocks and their details.
+func (h Handlers) BlocksByAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	var accountID database.AccountID
+	accountStr := web.Param(r, "account")
+	if accountStr != "" {
+		var err error
+		accountID, err = database.ToAccountID(web.Param(r, "account"))
+		if err != nil {
+			return err
+		}
+	}
+
+	dbBlocks, err := h.State.QueryBlocksByAccount(accountID)
+	if err != nil {
+		return err
+	}
+
+	if len(dbBlocks) == 0 {
+		return web.Respond(ctx, w, nil, http.StatusNoContent)
+	}
+
+	blocks := make([]block, len(dbBlocks))
+	for j, blk := range dbBlocks {
+		values := blk.MerkleTree.Values()
+
+		trans := make([]tx, len(values))
+		for i, tran := range values {
+			rawProof, order, err := blk.MerkleTree.Proof(tran)
+			if err != nil {
+				return err
+			}
+			proof := make([]string, len(rawProof))
+			for i, rp := range rawProof {
+				proof[i] = hexutil.Encode(rp)
+			}
+
+			trans[i] = tx{
+				FromAccount: tran.FromID,
+				FromName:    h.NS.Lookup(tran.FromID),
+				To:          tran.ToID,
+				ToName:      h.NS.Lookup(tran.ToID),
+				ChainID:     tran.ChainID,
+				Nonce:       tran.Nonce,
+				Value:       tran.Value,
+				Tip:         tran.Tip,
+				Data:        tran.Data,
+				TimeStamp:   tran.TimeStamp,
+				GasPrice:    tran.GasPrice,
+				GasUnits:    tran.GasUnits,
+				Sig:         tran.SignatureString(),
+				Proof:       proof,
+				ProofOrder:  order,
+			}
+		}
+
+		b := block{
+			Number:        blk.Header.Number,
+			PrevBlockHash: blk.Header.PrevBlockHash,
+			TimeStamp:     blk.Header.TimeStamp,
+			BeneficiaryID: blk.Header.BeneficiaryID,
+			Difficulty:    blk.Header.Difficulty,
+			MiningReward:  blk.Header.MiningReward,
+			Nonce:         blk.Header.Nonce,
+			StateRoot:     blk.Header.StateRoot,
+			TransRoot:     blk.Header.TransRoot,
+			Transactions:  trans,
+		}
+
+		blocks[j] = b
+	}
+
+	return web.Respond(ctx, w, blocks, http.StatusOK)
 }

@@ -4,6 +4,19 @@ import (
 	"github.com/wtran29/go-blockchain/foundation/blockchain/database"
 )
 
+type act struct {
+	Account database.AccountID `json:"account"`
+	Name    string             `json:"name"`
+	Balance uint64             `json:"balance"`
+	Nonce   uint64             `json:"nonce"`
+}
+
+type actInfo struct {
+	LastestBlock string `json:"lastest_block"`
+	Uncommitted  int    `json:"uncommitted"`
+	Accounts     []act  `json:"accounts"`
+}
+
 type tx struct {
 	FromAccount database.AccountID `json:"from"`
 	FromName    string             `json:"from_name"`
@@ -20,4 +33,17 @@ type tx struct {
 	Sig         string             `json:"sig"`
 	Proof       []string           `json:"proof"`
 	ProofOrder  []int64            `json:"proof_order"`
+}
+
+type block struct {
+	Number        uint64             `json:"number"`
+	PrevBlockHash string             `json:"prev_block_hash"`
+	TimeStamp     uint64             `json:"timestamp"`
+	BeneficiaryID database.AccountID `json:"beneficiary"`
+	Difficulty    uint16             `json:"difficulty"`
+	MiningReward  uint64             `json:"mining_reward"`
+	StateRoot     string             `json:"state_root"`
+	TransRoot     string             `json:"trans_root"`
+	Nonce         uint64             `json:"nonce"`
+	Transactions  []tx               `json:"txs"`
 }
